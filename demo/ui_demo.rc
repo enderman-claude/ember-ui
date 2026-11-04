@@ -1,0 +1,2 @@
+/* Embeds the manifest that turns on the Windows visual styles (themed buttons). */
+1 24 "ui_demo.manifest"

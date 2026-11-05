@@ -180,11 +180,16 @@ static void custom_set_root(ui_widget *root) {
     g_root = root;
 }
 
+static int custom_step(void) {
+    if (gfx_closed()) return 0;
+    if (g_root) custom_frame(g_root);
+    else gfx_present();
+    gfx_sleep_ms(16);
+    return !gfx_closed();
+}
+
 static int custom_run(void) {
-    while (!gfx_closed()) {
-        if (g_root) custom_frame(g_root);
-        else gfx_present();
-        gfx_sleep_ms(16);
+    while (custom_step()) {
     }
     return 0;
 }
@@ -198,5 +203,6 @@ const ui_backend ui_backend_custom = {
     .open = custom_open,
     .set_root = custom_set_root,
     .run = custom_run,
+    .step = custom_step,
     .quit = custom_quit,
 };

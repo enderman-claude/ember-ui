@@ -31,14 +31,18 @@ ui_widget *ui_stack(int vertical, int padding, int spacing);
 ui_widget *ui_label(const char *text, uint32_t fg);
 ui_widget *ui_button(const char *text, ui_click_fn on_click, void *user);
 
-/* Adds child to a stack. Returns 1 on success, 0 if parent is not a stack or on
- * allocation failure. */
+/* Adds child to a stack. Returns 1 on success. Returns 0 if parent is not a stack, if child
+ * already has a parent (or is parent itself, or one of its ancestors), or on allocation
+ * failure. A stack owns its children: destroying it destroys them. */
 int ui_add(ui_widget *parent, ui_widget *child);
+/* Takes child out of parent without destroying it, so it can be added elsewhere or
+ * destroyed on its own. Returns 1 if child was a child of parent, otherwise 0. */
+int ui_remove(ui_widget *parent, ui_widget *child);
 
 void ui_set_text(ui_widget *w, const char *text);
 void ui_set_colors(ui_widget *w, uint32_t fg, uint32_t bg);
 
-/* Frees w and everything below it. */
+/* Frees w and everything below it. If w has a parent, it is taken out of it first. */
 void ui_destroy(ui_widget *w);
 
 /* Preferred size of a widget (uses the backend's text measurement when it has one). */
@@ -58,6 +62,14 @@ const char *ui_backend_name(void);                        /* "gtk", "win32", "cu
 void ui_set_root(ui_widget *root);
 int ui_run(void);                                         /* blocks until closed */
 void ui_quit(void);
+
+/* Polled mode, for programs that own their main loop (Ember programs cannot hand control
+ * to ui_run). ui_open_polled is ui_open restricted to backends that can run one frame at a
+ * time: today only the custom backend. ui_step handles input, draws, presents, and
+ * sleeps about 16 ms. It returns 1 while the window is open, 0 once it has closed (or
+ * if the backend cannot be stepped). */
+int ui_open_polled(const char *title, int width, int height);  /* 1 on success */
+int ui_step(void);
 
 /* Custom backend: draws w into the current ember-gfx canvas (does not present). */
 void ui_custom_draw(const ui_widget *w);

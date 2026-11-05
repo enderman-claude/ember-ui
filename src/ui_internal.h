@@ -25,11 +25,13 @@ struct ui_widget {
     uint32_t fg, bg;
     ui_click_fn on_click;
     void *user;
+    ui_widget *parent;  /* the stack that owns this widget, or NULL */
     ui_widget **children;
     int nchildren, cap;
     int x, y, w, h;
     int hovered, pressed;
     void *native; /* the backend's control for this widget, if it has one */
+    int64_t em_id; /* handle given out by the Ember bindings (ember_ui_em.c), or 0 */
 };
 
 typedef struct ui_backend {
@@ -38,6 +40,7 @@ typedef struct ui_backend {
     void (*set_root)(ui_widget *root);
     void (*text_changed)(ui_widget *w);                     /* may be NULL */
     int (*run)(void);                                       /* blocks until closed */
+    int (*step)(void);                                      /* one frame; 0 once closed; may be NULL */
     void (*quit)(void);
     int (*measure_text)(const char *text, int *width, int *height); /* may be NULL */
 } ui_backend;

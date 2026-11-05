@@ -1,11 +1,15 @@
 # ember-ui build.
 #
 #   make                 Linux: custom backend, plus GTK if GTK 3 is installed
-#   make test            headless tests (layout, hit testing, custom drawing)
+#   make test            headless tests (layout, hit testing, custom drawing, Ember bindings);
+#                        also runs the Ember self-test when nasm is installed
+#   make test-ember      build and run demo/selftest.em, a headless Ember program
+#   make demo-ember      build and run demo/counter.em, an interactive Ember program
 #   make demo            build build/ui_demo
 #   make WIN32=1 demo    Windows: build build/ui_demo.exe (Win32 backend, needs MinGW)
 #
-# GFX points at the ember-gfx checkout (default ../ember-gfx).
+# GFX points at the ember-gfx checkout (default ../ember-gfx); EMBER_REPO at the Ember
+# compiler checkout (default ../ember), used only for the Ember self-test.
 
 GFX ?= ../ember-gfx
 BUILD := build
@@ -42,7 +46,7 @@ else
   DEMO_LDFLAGS :=
 endif
 
-UI_SRC := src/ember_ui.c $(BACKEND_SRC)
+UI_SRC := src/ember_ui.c src/ember_ui_em.c $(BACKEND_SRC)
 UI_OBJ := $(patsubst src/%.c,$(BUILD)/%.o,$(UI_SRC))
 UI_LIB := $(BUILD)/libember_ui.a
 
@@ -54,7 +58,7 @@ $(BUILD):
 $(GFX)/build/libember_gfx.a:
 	$(MAKE) -C $(GFX)
 
-$(BUILD)/%.o: src/%.c src/ui_internal.h include/ember_ui.h | $(BUILD)
+$(BUILD)/%.o: src/%.c src/ui_internal.h include/ember_ui.h include/ember_ui_em.h | $(BUILD)
 	$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 $(UI_LIB): $(UI_OBJ)
@@ -73,11 +77,33 @@ ifneq ($(WIN32),1)
 $(BUILD)/test_ui: tests/test_ui.c $(UI_LIB) $(GFX_LIB)
 	$(CC) $(CFLAGS) $(DEFS) tests/test_ui.c $(UI_LIB) $(PLATFORM_LIBS) -o $@
 
+EMBER_REPO ?= ../ember
+EMBER := PYTHONPATH=$(EMBER_REPO) python3 -m ember
+EMBER_LINK := --link=$(UI_LIB) $(foreach l,$(PLATFORM_LIBS),--link=$(l))
+
+$(BUILD)/selftest: demo/selftest.em $(UI_LIB) $(GFX_LIB)
+	$(EMBER) build demo/selftest.em -o $@ $(EMBER_LINK)
+
+$(BUILD)/counter: demo/counter.em $(UI_LIB) $(GFX_LIB)
+	$(EMBER) build demo/counter.em -o $@ $(EMBER_LINK)
+
+demo-ember: $(BUILD)/counter
+	./$(BUILD)/counter
+
+test-ember: $(BUILD)/selftest
+	GFX_BACKEND=null ./$(BUILD)/selftest | diff - demo/selftest.expect
+	@echo "selftest: output matches"
+
 test: $(BUILD)/test_ui
 	GFX_BACKEND=null ./$(BUILD)/test_ui
+ifneq ($(shell command -v nasm 2>/dev/null),)
+	$(MAKE) test-ember
+else
+	@echo "== Ember self-test skipped: nasm not installed"
+endif
 endif
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all demo test clean
+.PHONY: all demo demo-ember test test-ember clean

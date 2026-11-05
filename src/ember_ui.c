@@ -74,6 +74,10 @@ ui_widget *ui_button(const char *text, ui_click_fn on_click, void *user) {
 
 int ui_add(ui_widget *parent, ui_widget *child) {
     if (!parent || !child || parent->kind != UI_STACK) return 0;
+    if (child->parent) return 0; /* a widget has one owner */
+    for (const ui_widget *a = parent; a; a = a->parent) {
+        if (a == child) return 0; /* would make a cycle */
+    }
     if (parent->nchildren == parent->cap) {
         int ncap = parent->cap ? parent->cap * 2 : 4;
         ui_widget **nc = realloc(parent->children, (size_t)ncap * sizeof *nc);
@@ -82,7 +86,21 @@ int ui_add(ui_widget *parent, ui_widget *child) {
         parent->cap = ncap;
     }
     parent->children[parent->nchildren++] = child;
+    child->parent = parent;
     return 1;
+}
+
+int ui_remove(ui_widget *parent, ui_widget *child) {
+    if (!parent || !child || child->parent != parent) return 0;
+    for (int i = 0; i < parent->nchildren; i++) {
+        if (parent->children[i] != child) continue;
+        memmove(&parent->children[i], &parent->children[i + 1],
+                (size_t)(parent->nchildren - i - 1) * sizeof *parent->children);
+        parent->nchildren--;
+        child->parent = NULL;
+        return 1;
+    }
+    return 0;
 }
 
 void ui_set_text(ui_widget *w, const char *text) {
@@ -100,12 +118,17 @@ void ui_set_colors(ui_widget *w, uint32_t fg, uint32_t bg) {
     w->bg = bg;
 }
 
-void ui_destroy(ui_widget *w) {
-    if (!w) return;
-    for (int i = 0; i < w->nchildren; i++) ui_destroy(w->children[i]);
+static void destroy_tree(ui_widget *w) {
+    for (int i = 0; i < w->nchildren; i++) destroy_tree(w->children[i]);
     free(w->children);
     free(w->text);
     free(w);
+}
+
+void ui_destroy(ui_widget *w) {
+    if (!w) return;
+    if (w->parent) ui_remove(w->parent, w);
+    destroy_tree(w);
 }
 
 /* ---- layout ----------------------------------------------------------------- */
@@ -203,17 +226,26 @@ int ui_click(ui_widget *root, int x, int y) {
 
 /* ---- application ------------------------------------------------------------ */
 
-int ui_open(const char *title, int width, int height) {
+static int open_backend(const char *title, int width, int height, int polled) {
     const char *want = getenv("EMBER_UI_BACKEND");
     for (int i = 0; backends[i]; i++) {
         const ui_backend *b = backends[i];
         if (want && *want && strcmp(want, b->name) != 0) continue;
+        if (polled && !b->step) continue;
         if (b->open(title, width, height)) {
             g_backend = b;
             return 1;
         }
     }
     return 0;
+}
+
+int ui_open(const char *title, int width, int height) {
+    return open_backend(title, width, height, 0);
+}
+
+int ui_open_polled(const char *title, int width, int height) {
+    return open_backend(title, width, height, 1);
 }
 
 const char *ui_backend_name(void) {
@@ -226,6 +258,10 @@ void ui_set_root(ui_widget *root) {
 
 int ui_run(void) {
     return g_backend ? g_backend->run() : 0;
+}
+
+int ui_step(void) {
+    return g_backend && g_backend->step ? g_backend->step() : 0;
 }
 
 void ui_quit(void) {
